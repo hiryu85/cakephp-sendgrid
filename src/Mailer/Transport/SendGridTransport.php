@@ -100,19 +100,20 @@ class SendGridTransport extends AbstractTransport
         if (!empty($attachments)) {
             foreach ($attachments as $name => $file) {
                 $this->_reqParams['attachments'][] = (object)[
-                        'content' => base64_encode(file_get_contents($file['file'])),
-                        'filename' => $name,
+                        'content'     => base64_encode(file_get_contents($file['file'])),
+                        'filename'    => $name,
                         'disposition' => (!empty($file['contentId'])) ? 'inline' : 'attachment',
-                        'content_id' => (!empty($file['contentId'])) ? $file['contentId'] : ''
+                        'content_id'  => (!empty($file['contentId'])) ? $file['contentId'] : ''
                 ];
             }
         }
 
-        $apiRsponse = $this->_sendEmail();
+        $apiResponse = $this->_sendEmail();
         $res = [
-            'apiResponse' => $apiRsponse,
-            'reqParams' => $this->_reqParams
+            'apiResponse' => $apiResponse,
+            'reqParams'   => $this->_reqParams
         ];
+
         $this->_reset();
 
         return $res;
@@ -227,16 +228,31 @@ class SendGridTransport extends AbstractTransport
     /**
      * Make an API request to send email
      *
-     * @return mixed JSON Response from SendGrid API
+     * @return array JSON Response from SendGrid API
      */
     protected function _sendEmail()
     {
         $headers = ['type' => 'json'];
         $http = new Client(['headers' => ['Authorization' => 'Bearer ' . $this->getConfig('apiKey')]]);
-        $response = $http
-            ->post("{$this->getConfig('apiEndpoint')}/mail/send", json_encode($this->_reqParams), $headers);
+        $response = $http->post(
+            "{$this->getConfig('apiEndpoint')}/mail/send",
+            json_encode($this->_reqParams),
+            $headers
+        );
 
-        return $response->getJson();
+        $apiResponse['sent']     = true;
+        $apiResponse['response'] = $response->getJson();
+        $apiResponse['mail_id']  = $response->getHeader('X-Message-Id') ?? null;
+
+        if (!$response->isOk()) {
+            $firstError = $apiResponse['errors'][0]['message'] ?? 'SendGrid: undefined error';
+
+            $apiResponse['mail_id']  = null;
+            $apiResponse['is_error'] = true;
+            $apiResponse['message']  = $firstError;
+        }
+
+        return $apiResponse;
     }
 
     /**
